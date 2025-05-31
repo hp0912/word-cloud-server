@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 复制应用程序代码到容器中
 COPY . .
 
-CMD ["python3", "main.py"]
+CMD ["python3", "server.py"]

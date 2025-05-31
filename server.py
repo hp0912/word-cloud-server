@@ -4,6 +4,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 from utils import gen_word_cloud_pic
 from loguru import logger
+import datetime
 
 class WordCloudHandler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -42,45 +43,57 @@ class WordCloudHandler(BaseHTTPRequestHandler):
             logger.info(f"Generating word cloud for chat_room_id: {chat_room_id}, mode: {mode}")
             
             # 调用词云生成函数
-            gen_word_cloud_pic(content, chat_room_id, mode)
+            temp_file_path = gen_word_cloud_pic(content, chat_room_id, mode)
             
-            # 生成文件路径
-            import datetime
-            _now = datetime.datetime.now()
-            _date = ""
-            if mode == 'yesterday':
-                _date = (_now + datetime.timedelta(days=-1)).strftime("%Y%m%d")
-            elif mode == 'week':
-                _week = _now.isocalendar()
-                _date = "{}{}".format(_week[0], _week[1] - 1)
-            elif mode == 'month':
-                _now = _now.replace(day=1)
-                _date = (_now + datetime.timedelta(days=-1)).strftime("%Y%m")
-            elif mode == 'year':
-                _date = _now.year - 1
-            
-            output_filename = f"/app/wordcloud/{_date}_{chat_room_id}.png"
-            
-            # 检查文件是否存在
-            if not os.path.exists(output_filename):
-                self.send_error(500, "Failed to generate word cloud image")
+            if not temp_file_path:
+                self.send_error(500, "Failed to generate word cloud - no words found")
                 return
             
-            # 读取生成的图片文件
-            with open(output_filename, 'rb') as f:
-                image_data = f.read()
-            
-            # 发送响应头
-            self.send_response(200)
-            self.send_header('Content-Type', 'image/png')
-            self.send_header('Content-Length', str(len(image_data)))
-            self.send_header('Content-Disposition', f'attachment; filename="{os.path.basename(output_filename)}"')
-            self.end_headers()
-            
-            # 发送图片数据
-            self.wfile.write(image_data)
-            
-            logger.success(f"Word cloud image sent successfully for chat_room_id: {chat_room_id}")
+            try:
+                # 检查文件是否存在
+                if not os.path.exists(temp_file_path):
+                    self.send_error(500, "Failed to generate word cloud image")
+                    return
+                
+                # 读取生成的图片文件
+                with open(temp_file_path, 'rb') as f:
+                    image_data = f.read()
+                
+                # 生成文件名用于下载
+                _now = datetime.datetime.now()
+                _date = ""
+                if mode == 'yesterday':
+                    _date = (_now + datetime.timedelta(days=-1)).strftime("%Y%m%d")
+                elif mode == 'week':
+                    _week = _now.isocalendar()
+                    _date = "{}{}".format(_week[0], _week[1] - 1)
+                elif mode == 'month':
+                    _now = _now.replace(day=1)
+                    _date = (_now + datetime.timedelta(days=-1)).strftime("%Y%m")
+                elif mode == 'year':
+                    _date = _now.year - 1
+                
+                download_filename = f"{_date}_{chat_room_id}.png"
+                
+                # 发送响应头
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/png')
+                self.send_header('Content-Length', str(len(image_data)))
+                self.send_header('Content-Disposition', f'attachment; filename="{download_filename}"')
+                self.end_headers()
+                
+                # 发送图片数据
+                self.wfile.write(image_data)
+                
+                logger.success(f"Word cloud image sent successfully for chat_room_id: {chat_room_id}")
+                
+            finally:
+                # 删除临时文件
+                try:
+                    os.unlink(temp_file_path)
+                    logger.debug(f"Temporary file deleted: {temp_file_path}")
+                except OSError as e:
+                    logger.warning(f"Failed to delete temporary file {temp_file_path}: {e}")
             
         except json.JSONDecodeError:
             self.send_error(400, "Invalid JSON format")
@@ -120,9 +133,6 @@ class WordCloudHandler(BaseHTTPRequestHandler):
 
 def run_server(port=9000):
     """启动HTTP服务器"""
-    # 确保输出目录存在
-    os.makedirs('/app/wordcloud', exist_ok=True)
-    
     server_address = ('', port)
     httpd = HTTPServer(server_address, WordCloudHandler)
     

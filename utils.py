@@ -9,7 +9,7 @@ import pandas
 from wordcloud import WordCloud, ImageColorGenerator
 from PIL import ImageFont, Image, ImageDraw
 from loguru import logger
-
+import tempfile
 
 def gen_word_cloud_pic(content, chat_room_id, mode):
     """生成词云工具类
@@ -62,31 +62,16 @@ def gen_word_cloud_pic(content, chat_room_id, mode):
     _background_img_colors = ImageColorGenerator(_background_img)
     _word_cloud.recolor(color_func=_background_img_colors)
 
-    # 获取当前日期
-    _now = datetime.datetime.now()
-    _year = _now.year
-    _date = ""
-    if mode == 'yesterday':
-        _date = (_now + datetime.timedelta(days=-1)).strftime("%Y%m%d")
-    elif mode == 'week':
-        # 取出上周的周数
-        _week = _now.isocalendar()
-        _date = "{}{}".format(_week[0], _week[1] - 1)
-    elif mode == 'month':
-        # 获取上个月
-        _now = _now.replace(day=1)
-        _date = (_now + datetime.timedelta(days=-1)).strftime("%Y%m")
-    elif mode == 'year':
-        # 去年
-        _date = _now.year - 1
-
-
-    output_filename = "/app/wordcloud/{}_{}.png".format(_date, chat_room_id)
+    # 创建临时文件
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
+        output_filename = temp_file.name
 
     logger.debug('[{}]正在保存文件：{}'.format(chat_room_id, output_filename))
     _word_cloud.to_file(output_filename)
     logger.success('[{}]文件保存成功，开始添加头部信息'.format(chat_room_id))
     add_title(mode, output_filename)
+    
+    return output_filename
 
 # 给图片加个头
 def add_title(mode, file):
